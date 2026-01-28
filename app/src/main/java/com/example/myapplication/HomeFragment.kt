@@ -27,12 +27,11 @@ class HomeFragment : Fragment() {
     
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
-        // Update UI after language change
         updateUI()
     }
     
     private fun updateUI() {
-        // Update any UI elements if needed after language change
+        // Update UI elements
     }
     
     private fun openSettings() {

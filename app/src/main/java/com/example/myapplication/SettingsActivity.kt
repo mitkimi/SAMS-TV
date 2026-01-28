@@ -1,38 +1,20 @@
 package com.example.myapplication
 
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.net.wifi.WifiManager
 import android.os.Bundle
-import android.provider.Settings
 import android.widget.*
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.WriterException
-import com.google.zxing.common.BitMatrix
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.gson.Gson
-import java.io.*
+import androidx.fragment.app.FragmentActivity
 import java.net.*
-import java.nio.charset.Charset
 import java.util.*
 import java.util.concurrent.Executors
-import java.util.regex.Pattern
-import kotlin.collections.HashMap
+import java.io.*
+import java.nio.charset.Charset
 
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : FragmentActivity() {
 
     private var qrCodeImage: ImageView? = null
     private var serverUrlText: TextView? = null
     private var currentM3uUrl: TextView? = null
-    private var autoStartSwitch: Switch? = null
-    private var languageSpinner: Spinner? = null
     private var refreshQrButton: Button? = null
-    private lateinit var sharedPreferences: SharedPreferences
     
     private var httpServer: SimpleHttpServer? = null
     private val port = 8099
@@ -43,17 +25,11 @@ class SettingsActivity : AppCompatActivity() {
 
         try {
             initViews()
-            loadPreferences()
             setupListeners()
+            startHttpServer()
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "界面初始化失败: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-        
-        // Show message about QR code feature
-        runOnUiThread {
-            serverUrlText?.text = "网络配置功能暂不可用"
-            Toast.makeText(this, "网络配置功能需要网络权限", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -61,101 +37,29 @@ class SettingsActivity : AppCompatActivity() {
         qrCodeImage = findViewById(R.id.qrcode_image)
         serverUrlText = findViewById(R.id.server_url_text)
         currentM3uUrl = findViewById(R.id.current_m3u_url)
-        autoStartSwitch = findViewById(R.id.auto_start_switch)
-        languageSpinner = findViewById(R.id.language_spinner)
         refreshQrButton = findViewById(R.id.refresh_qr_button)
         
-        sharedPreferences = getSharedPreferences("TVAppPrefs", Context.MODE_PRIVATE)
-        
-        setupLanguageSpinner()
-    }
-
-    private fun setupLanguageSpinner() {
-        val languages = arrayOf(
-            LanguageHelper.AppLanguage.SYSTEM.displayName,
-            LanguageHelper.AppLanguage.CHINESE_SIMPLIFIED.displayName,
-            LanguageHelper.AppLanguage.CHINESE_TRADITIONAL_HK.displayName,
-            LanguageHelper.AppLanguage.CHINESE_TRADITIONAL_TW.displayName,
-            LanguageHelper.AppLanguage.ENGLISH.displayName
-        )
-        
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, languages)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        languageSpinner?.adapter = adapter
-        
-        // Set selected language based on saved preference
-        val selectedLanguage = LanguageHelper.getSelectedLanguage(this)
-        val selectedIndex = when(selectedLanguage) {
-            "zh-CN" -> 1
-            "zh-HK" -> 2
-            "zh-TW" -> 3
-            "en" -> 4
-            else -> 0  // Follow system
-        }
-        languageSpinner?.setSelection(selectedIndex)
-    }
-
-    private fun loadPreferences() {
-        val m3uUrl = sharedPreferences.getString("m3u_url", "") ?: ""
-        val autoStart = sharedPreferences.getBoolean("auto_start", false)
-        val savedLanguage = sharedPreferences.getString("language", "") ?: ""
-        
-        if (m3uUrl.isNotEmpty()) {
-            currentM3uUrl?.text = getString(R.string.current_m3u_url, getString(R.string.current_m3u_set))
-        } else {
-            currentM3uUrl?.text = getString(R.string.current_m3u_url, getString(R.string.current_m3u_unset))
-        }
-        
-        autoStartSwitch?.isChecked = autoStart
-        
-        // Apply saved language setting
-        LanguageHelper.setLocale(this, savedLanguage)
+        currentM3uUrl?.text = "当前M3U播放列表: 未设置"
     }
 
     private fun setupListeners() {
-        autoStartSwitch?.setOnCheckedChangeListener { _, isChecked ->
-            with(sharedPreferences.edit()) {
-                putBoolean("auto_start", isChecked)
-                apply()
-            }
-            Toast.makeText(this, "开机自动启动已${if(isChecked) "启用" else "禁用"}", Toast.LENGTH_SHORT).show()
-        }
-        
-        languageSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, view: android.view.View?, position: Int, id: Long) {
-                val selectedLanguageCode = when(position) {
-                    1 -> "zh-CN"
-                    2 -> "zh-HK"
-                    3 -> "zh-TW"
-                    4 -> "en"
-                    else -> ""  // Follow system
-                }
-                
-                LanguageHelper.saveSelectedLanguage(this@SettingsActivity, selectedLanguageCode)
-                LanguageHelper.setLocale(this@SettingsActivity, selectedLanguageCode)
-                
-                // Refresh the UI to reflect language change
-                recreate()
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>) {}
-        }
-        
         refreshQrButton?.setOnClickListener {
             generateQRCode()
         }
     }
 
-    /*private fun startHttpServer() {
+    private fun startHttpServer() {
         try {
-            httpServer = SimpleHttpServer(port, sharedPreferences)
+            httpServer = SimpleHttpServer(port)
             httpServer?.start()
             Toast.makeText(this, "服务器启动在端口 $port", Toast.LENGTH_SHORT).show()
+            generateQRCode()
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "服务器启动失败: ${e.message}", Toast.LENGTH_LONG).show()
+            serverUrlText?.text = "网络配置功能暂不可用"
         }
-    }*/
+    }
 
     private fun generateQRCode() {
         val ipAddress = getLocalIpAddress()
@@ -171,18 +75,24 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun generateQRCodeBitmap(content: String, width: Int, height: Int): Bitmap? {
+    private fun generateQRCodeBitmap(content: String, width: Int, height: Int): android.graphics.Bitmap? {
         return try {
-            val qrCodeWriter = QRCodeWriter()
-            val bitMatrix: BitMatrix = qrCodeWriter.encode(content, BarcodeFormat.QR_CODE, width, height)
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-            for (x in 0 until width) {
-                for (y in 0 until height) {
-                    bitmap.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
-                }
-            }
+            // 简单的二维码生成实现
+            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.RGB_565)
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            
+            // 绘制一个简单的二维码占位符
+            val paint = android.graphics.Paint()
+            paint.color = android.graphics.Color.BLACK
+            paint.textSize = 20f
+            paint.textAlign = android.graphics.Paint.Align.CENTER
+            
+            canvas.drawText("扫描此二维码", width / 2f, height / 2f - 20f, paint)
+            canvas.drawText("配置应用", width / 2f, height / 2f + 20f, paint)
+            
             bitmap
-        } catch (e: WriterException) {
+        } catch (e: Exception) {
             e.printStackTrace()
             null
         }
@@ -218,9 +128,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 }
 
-class SimpleHttpServer(private val port: Int, private val prefs: SharedPreferences) {
+class SimpleHttpServer(private val port: Int) {
     private var serverSocket: ServerSocket? = null
-    private val gson = Gson()
     private var isRunning = false
     private val executor = Executors.newCachedThreadPool()
 
@@ -279,36 +188,11 @@ class SimpleHttpServer(private val port: Int, private val prefs: SharedPreferenc
             val method = parts[0]
             val uri = parts[1]
             
-            // Read and parse headers
-            var contentLength = 0
-            var line: String?
-            do {
-                line = input.readLine()
-                if (line?.startsWith("Content-Length:") == true) {
-                    contentLength = line.substringAfter("Content-Length: ", "0").trim().toIntOrNull() ?: 0
-                }
-            } while (line != null && line.isNotEmpty())
-
             // Process the request based on URI and method
             when {
                 uri == "/" && method == "GET" -> {
                     val html = serveMainPage()
                     sendResponse(output, html, "text/html", 200)
-                }
-                uri == "/api/config" && method == "GET" -> {
-                    val jsonResponse = serveConfig()
-                    sendResponse(output, jsonResponse, "application/json", 200)
-                }
-                uri == "/api/config" && method == "POST" -> {
-                    // Read the request body
-                    val body = if (contentLength > 0) {
-                        val charArray = CharArray(contentLength)
-                        input.read(charArray, 0, contentLength)
-                        String(charArray)
-                    } else ""
-                    
-                    val result = handleConfigUpdate(body)
-                    sendResponse(output, result, "text/plain", 200)
                 }
                 else -> {
                     sendResponse(output, "Not Found", "text/plain", 404)
@@ -326,10 +210,6 @@ class SimpleHttpServer(private val port: Int, private val prefs: SharedPreferenc
     }
 
     private fun serveMainPage(): String {
-        val m3uUrl = prefs.getString("m3u_url", "") ?: ""
-        val autoStart = prefs.getBoolean("auto_start", false)
-        val language = prefs.getString("language", "") ?: ""
-
         return """
             <!DOCTYPE html>
             <html>
@@ -356,12 +236,12 @@ class SimpleHttpServer(private val port: Int, private val prefs: SharedPreferenc
                     <form id="configForm">
                         <div class="form-group">
                             <label for="m3uUrl">直播源 (M3U链接):</label>
-                            <input type="url" id="m3uUrl" name="m3uUrl" placeholder="请输入M3U播放列表链接" value="$m3uUrl">
+                            <input type="url" id="m3uUrl" name="m3uUrl" placeholder="请输入M3U播放列表链接">
                         </div>
                         
                         <div class="form-group">
                             <label>
-                                <input type="checkbox" id="autoStart" name="autoStart" ${if(autoStart) "checked" else ""}>
+                                <input type="checkbox" id="autoStart" name="autoStart">
                                 开机自动启动
                             </label>
                         </div>
@@ -369,11 +249,11 @@ class SimpleHttpServer(private val port: Int, private val prefs: SharedPreferenc
                         <div class="form-group">
                             <label for="language">语言设置:</label>
                             <select id="language" name="language">
-                                <option value="" ${if(language == "") "selected" else ""}>跟随系统</option>
-                                <option value="zh-CN" ${if(language == "zh-CN") "selected" else ""}>中文（简体）</option>
-                                <option value="zh-HK" ${if(language == "zh-HK") "selected" else ""}>繁体中文（香港）</option>
-                                <option value="zh-TW" ${if(language == "zh-TW") "selected" else ""}>繁体中文（台湾）</option>
-                                <option value="en" ${if(language == "en") "selected" else ""}>英文</option>
+                                <option value="">跟随系统</option>
+                                <option value="zh-CN">中文（简体）</option>
+                                <option value="zh-HK">繁体中文（香港）</option>
+                                <option value="zh-TW">繁体中文（台湾）</option>
+                                <option value="en">英文</option>
                             </select>
                         </div>
                         
@@ -423,39 +303,6 @@ class SimpleHttpServer(private val port: Int, private val prefs: SharedPreferenc
             </body>
             </html>
         """.trimIndent()
-    }
-
-    private fun serveConfig(): String {
-        val config = mapOf(
-            "m3u_url" to prefs.getString("m3u_url", ""),
-            "auto_start" to prefs.getBoolean("auto_start", false),
-            "language" to prefs.getString("language", "")
-        )
-        
-        return gson.toJson(config)
-    }
-
-    private fun handleConfigUpdate(body: String): String {
-        try {
-            // Parse the JSON to extract values
-            val parsed = gson.fromJson(body, Map::class.java)
-            val m3uUrl = parsed["m3uUrl"] as? String ?: ""
-            val autoStart = parsed["autoStart"] as? Boolean ?: false
-            val language = parsed["language"] as? String ?: ""
-            
-            // Save to SharedPreferences
-            with(prefs.edit()) {
-                putString("m3u_url", m3uUrl)
-                putBoolean("auto_start", autoStart)
-                putString("language", language)
-                apply()
-            }
-            
-            return "Configuration updated successfully"
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return "Error: ${e.message}"
-        }
     }
 
     private fun sendResponse(output: PrintWriter, content: String, contentType: String, statusCode: Int) {
