@@ -39,6 +39,19 @@ android {
 }
 
 dependencies {
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.leanback)
+    
+    // QR Code generation
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    
+
+    
+    // Preferences
+    implementation("androidx.preference:preference-ktx:1.2.1")
+    
+    // JSON parsing
+    implementation("com.google.code.gson:gson:2.10.1")
 }

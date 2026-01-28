@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">Sam\'s TV</string>
+    <string name="settings_title">应用设置</string>
+    <string name="wifi_config_qr">WiFi配置二维码</string>
+    <string name="qr_scan_instruction">请使用手机扫描下方二维码，通过网页配置应用设置</string>
+    <string name="live_source_config">直播源配置</string>
+    <string name="current_m3u_url">当前M3U链接：%s</string>
+    <string name="current_m3u_unset">未设置</string>
+    <string name="current_m3u_set">已设置</string>
+    <string name="auto_start_setting">开机自动启动</string>
+    <string name="auto_start_label">开机自动启动应用</string>
+    <string name="refresh_qr">刷新二维码</string>
+    <string name="language_setting">语言设置</string>
+    <string name="language_follow_system">跟随系统</string>
+    <string name="language_chinese_simplified">中文（简体）</string>
+    <string name="language_chinese_traditional_hk">繁体中文（香港）</string>
+    <string name="language_chinese_traditional_tw">繁体中文（台湾）</string>
+    <string name="language_english">英文</string>
+</resources>

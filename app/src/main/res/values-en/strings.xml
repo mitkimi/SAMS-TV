@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">Sam\'s TV</string>
+    <string name="settings_title">App Settings</string>
+    <string name="wifi_config_qr">WiFi Configuration QR Code</string>
+    <string name="qr_scan_instruction">Please scan the QR code below with your phone to configure app settings via web</string>
+    <string name="live_source_config">Live Source Configuration</string>
+    <string name="current_m3u_url">Current M3U Link: %s</string>
+    <string name="current_m3u_unset">Not Set</string>
+    <string name="current_m3u_set">Set</string>
+    <string name="auto_start_setting">Auto Start</string>
+    <string name="auto_start_label">Auto-start app on boot</string>
+    <string name="refresh_qr">Refresh QR Code</string>
+    <string name="language_setting">Language Setting</string>
+    <string name="language_follow_system">Follow System</string>
+    <string name="language_chinese_simplified">Chinese (Simplified)</string>
+    <string name="language_chinese_traditional_hk">Traditional Chinese (Hong Kong)</string>
+    <string name="language_chinese_traditional_tw">Traditional Chinese (Taiwan)</string>
+    <string name="language_english">English</string>
+</resources>
