@@ -18,6 +18,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.google.gson.Gson
 import java.io.*
 import java.net.*
+import java.nio.charset.Charset
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.regex.Pattern
@@ -25,12 +26,12 @@ import kotlin.collections.HashMap
 
 class SettingsActivity : AppCompatActivity() {
 
-    private lateinit var qrCodeImage: ImageView
-    private lateinit var serverUrlText: TextView
-    private lateinit var currentM3uUrl: TextView
-    private lateinit var autoStartSwitch: Switch
-    private lateinit var languageSpinner: Spinner
-    private lateinit var refreshQrButton: Button
+    private var qrCodeImage: ImageView? = null
+    private var serverUrlText: TextView? = null
+    private var currentM3uUrl: TextView? = null
+    private var autoStartSwitch: Switch? = null
+    private var languageSpinner: Spinner? = null
+    private var refreshQrButton: Button? = null
     private lateinit var sharedPreferences: SharedPreferences
     
     private var httpServer: SimpleHttpServer? = null
@@ -40,17 +41,20 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
 
-        initViews()
-        loadPreferences()
-        setupListeners()
+        try {
+            initViews()
+            loadPreferences()
+            setupListeners()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "界面初始化失败: ${e.message}", Toast.LENGTH_LONG).show()
+        }
         
-        // Start HTTP server and generate QR code in background
-        Thread {
-            startHttpServer()
-            runOnUiThread {
-                generateQRCode()
-            }
-        }.start()
+        // Show message about QR code feature
+        runOnUiThread {
+            serverUrlText?.text = "网络配置功能暂不可用"
+            Toast.makeText(this, "网络配置功能需要网络权限", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun initViews() {
@@ -77,7 +81,7 @@ class SettingsActivity : AppCompatActivity() {
         
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, languages)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        languageSpinner.adapter = adapter
+        languageSpinner?.adapter = adapter
         
         // Set selected language based on saved preference
         val selectedLanguage = LanguageHelper.getSelectedLanguage(this)
@@ -88,7 +92,7 @@ class SettingsActivity : AppCompatActivity() {
             "en" -> 4
             else -> 0  // Follow system
         }
-        languageSpinner.setSelection(selectedIndex)
+        languageSpinner?.setSelection(selectedIndex)
     }
 
     private fun loadPreferences() {
@@ -97,19 +101,19 @@ class SettingsActivity : AppCompatActivity() {
         val savedLanguage = sharedPreferences.getString("language", "") ?: ""
         
         if (m3uUrl.isNotEmpty()) {
-            currentM3uUrl.text = getString(R.string.current_m3u_url, getString(R.string.current_m3u_set))
+            currentM3uUrl?.text = getString(R.string.current_m3u_url, getString(R.string.current_m3u_set))
         } else {
-            currentM3uUrl.text = getString(R.string.current_m3u_url, getString(R.string.current_m3u_unset))
+            currentM3uUrl?.text = getString(R.string.current_m3u_url, getString(R.string.current_m3u_unset))
         }
         
-        autoStartSwitch.isChecked = autoStart
+        autoStartSwitch?.isChecked = autoStart
         
         // Apply saved language setting
         LanguageHelper.setLocale(this, savedLanguage)
     }
 
     private fun setupListeners() {
-        autoStartSwitch.setOnCheckedChangeListener { _, isChecked ->
+        autoStartSwitch?.setOnCheckedChangeListener { _, isChecked ->
             with(sharedPreferences.edit()) {
                 putBoolean("auto_start", isChecked)
                 apply()
@@ -117,7 +121,7 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, "开机自动启动已${if(isChecked) "启用" else "禁用"}", Toast.LENGTH_SHORT).show()
         }
         
-        languageSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        languageSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, view: android.view.View?, position: Int, id: Long) {
                 val selectedLanguageCode = when(position) {
                     1 -> "zh-CN"
@@ -137,12 +141,12 @@ class SettingsActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: AdapterView<*>) {}
         }
         
-        refreshQrButton.setOnClickListener {
+        refreshQrButton?.setOnClickListener {
             generateQRCode()
         }
     }
 
-    private fun startHttpServer() {
+    /*private fun startHttpServer() {
         try {
             httpServer = SimpleHttpServer(port, sharedPreferences)
             httpServer?.start()
@@ -151,18 +155,18 @@ class SettingsActivity : AppCompatActivity() {
             e.printStackTrace()
             Toast.makeText(this, "服务器启动失败: ${e.message}", Toast.LENGTH_LONG).show()
         }
-    }
+    }*/
 
     private fun generateQRCode() {
         val ipAddress = getLocalIpAddress()
         if (ipAddress != null) {
             val serverUrl = "http://$ipAddress:$port"
-            serverUrlText.text = serverUrl
+            serverUrlText?.text = serverUrl
             
             val qrCodeBitmap = generateQRCodeBitmap(serverUrl, 400, 400)
-            qrCodeImage.setImageBitmap(qrCodeBitmap)
+            qrCodeImage?.setImageBitmap(qrCodeBitmap)
         } else {
-            serverUrlText.text = "无法获取IP地址"
+            serverUrlText?.text = "无法获取IP地址"
             Toast.makeText(this, "无法获取本地IP地址", Toast.LENGTH_SHORT).show()
         }
     }
@@ -205,7 +209,12 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        httpServer?.stop()
+        // Stop HTTP server if it was started
+        try {
+            httpServer?.stop()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
 
@@ -217,7 +226,10 @@ class SimpleHttpServer(private val port: Int, private val prefs: SharedPreferenc
 
     fun start() {
         try {
-            serverSocket = ServerSocket(port)
+            // Try to bind to the preferred port, or use any available port
+            serverSocket = ServerSocket()
+            serverSocket?.reuseAddress = true
+            serverSocket?.bind(InetSocketAddress(port))
             isRunning = true
             
             // Start listening for connections in a new thread
@@ -449,7 +461,7 @@ class SimpleHttpServer(private val port: Int, private val prefs: SharedPreferenc
     private fun sendResponse(output: PrintWriter, content: String, contentType: String, statusCode: Int) {
         output.print("HTTP/1.1 $statusCode OK\r\n")
         output.print("Content-Type: $contentType\r\n")
-        output.print("Content-Length: ${content.toByteArray(Charsets.UTF_8).size}\r\n")
+        output.print("Content-Length: ${content.toByteArray(Charset.forName("UTF-8")).size}\r\n")
         output.print("Connection: close\r\n")
         output.print("\r\n")
         output.print(content)
