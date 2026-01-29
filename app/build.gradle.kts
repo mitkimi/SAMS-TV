@@ -54,4 +54,14 @@ dependencies {
     
     // JSON parsing
     implementation("com.google.code.gson:gson:2.10.1")
+    
+    // ExoPlayer for video playback
+    val exoPlayerVersion = "2.19.1"
+    implementation("com.google.android.exoplayer:exoplayer-core:$exoPlayerVersion")
+    implementation("com.google.android.exoplayer:exoplayer-ui:$exoPlayerVersion")
+    implementation("com.google.android.exoplayer:exoplayer-hls:$exoPlayerVersion")
+    
+    // Kotlin Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 }

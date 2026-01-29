@@ -1,5 +1,7 @@
 package com.example.myapplication
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.widget.*
 import androidx.fragment.app.FragmentActivity
@@ -8,6 +10,13 @@ import java.util.*
 import java.util.concurrent.Executors
 import java.io.*
 import java.nio.charset.Charset
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import android.graphics.Bitmap
+import android.graphics.Color
+import org.json.JSONObject
 
 class SettingsActivity : FragmentActivity() {
 
@@ -24,12 +33,23 @@ class SettingsActivity : FragmentActivity() {
         setContentView(R.layout.activity_settings)
 
         try {
+            // Set default M3U URL if not already set
+            setDefaultM3uUrl()
             initViews()
             setupListeners()
             startHttpServer()
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "界面初始化失败: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    private fun setDefaultM3uUrl() {
+        val prefs = getSharedPreferences("TVAppPrefs", Context.MODE_PRIVATE)
+        val currentM3uUrl = prefs.getString("m3u_url", "")
+        if (currentM3uUrl.isNullOrEmpty()) {
+            val defaultUrl = "http://offontime-prod.oss-cn-beijing.aliyuncs.com/cms/2026/01/28/02fada57-7f19-42ce-8c0a-c24854f68044.m3u8"
+            prefs.edit().putString("m3u_url", defaultUrl).apply()
         }
     }
 
@@ -39,7 +59,18 @@ class SettingsActivity : FragmentActivity() {
         currentM3uUrl = findViewById(R.id.current_m3u_url)
         refreshQrButton = findViewById(R.id.refresh_qr_button)
         
-        currentM3uUrl?.text = "当前M3U播放列表: 未设置"
+        // 读取并显示已保存的 M3U URL
+        loadAndDisplayM3uUrl()
+    }
+    
+    private fun loadAndDisplayM3uUrl() {
+        val prefs = getSharedPreferences("TVAppPrefs", Context.MODE_PRIVATE)
+        val savedM3uUrl = prefs.getString("m3u_url", "")
+        if (savedM3uUrl.isNullOrEmpty()) {
+            currentM3uUrl?.text = "当前M3U播放列表: 未设置"
+        } else {
+            currentM3uUrl?.text = "当前M3U播放列表: $savedM3uUrl"
+        }
     }
 
     private fun setupListeners() {
@@ -50,7 +81,7 @@ class SettingsActivity : FragmentActivity() {
 
     private fun startHttpServer() {
         try {
-            httpServer = SimpleHttpServer(port)
+            httpServer = SimpleHttpServer(port, this)
             httpServer?.start()
             Toast.makeText(this, "服务器启动在端口 $port", Toast.LENGTH_SHORT).show()
             generateQRCode()
@@ -59,6 +90,10 @@ class SettingsActivity : FragmentActivity() {
             Toast.makeText(this, "服务器启动失败: ${e.message}", Toast.LENGTH_LONG).show()
             serverUrlText?.text = "网络配置功能暂不可用"
         }
+    }
+    
+    fun refreshM3uUrlDisplay() {
+        loadAndDisplayM3uUrl()
     }
 
     private fun generateQRCode() {
@@ -75,26 +110,40 @@ class SettingsActivity : FragmentActivity() {
         }
     }
 
-    private fun generateQRCodeBitmap(content: String, width: Int, height: Int): android.graphics.Bitmap? {
+    private fun generateQRCodeBitmap(content: String, width: Int, height: Int): Bitmap? {
         return try {
-            // 简单的二维码生成实现
-            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.RGB_565)
-            val canvas = android.graphics.Canvas(bitmap)
-            canvas.drawColor(android.graphics.Color.WHITE)
+            val hints = Hashtable<EncodeHintType, Any>()
+            hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.H
+            hints[EncodeHintType.CHARACTER_SET] = "UTF-8"
+            hints[EncodeHintType.MARGIN] = 1
             
-            // 绘制一个简单的二维码占位符
-            val paint = android.graphics.Paint()
-            paint.color = android.graphics.Color.BLACK
-            paint.textSize = 20f
-            paint.textAlign = android.graphics.Paint.Align.CENTER
+            val writer = QRCodeWriter()
+            val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, width, height, hints)
             
-            canvas.drawText("扫描此二维码", width / 2f, height / 2f - 20f, paint)
-            canvas.drawText("配置应用", width / 2f, height / 2f + 20f, paint)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+            for (x in 0 until width) {
+                for (y in 0 until height) {
+                    bitmap.setPixel(x, y, if (bitMatrix[x, y]) Color.BLACK else Color.WHITE)
+                }
+            }
             
             bitmap
         } catch (e: Exception) {
             e.printStackTrace()
-            null
+            // 如果生成失败，返回一个错误提示的占位图
+            val errorBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+            val canvas = android.graphics.Canvas(errorBitmap)
+            canvas.drawColor(Color.WHITE)
+            
+            val paint = android.graphics.Paint()
+            paint.color = Color.BLACK
+            paint.textSize = 24f
+            paint.textAlign = android.graphics.Paint.Align.CENTER
+            
+            canvas.drawText("二维码生成失败", width / 2f, height / 2f - 20f, paint)
+            canvas.drawText("请检查网络连接", width / 2f, height / 2f + 20f, paint)
+            
+            errorBitmap
         }
     }
 
@@ -105,12 +154,21 @@ class SettingsActivity : FragmentActivity() {
                 if (networkInterface.isUp && !networkInterface.isLoopback) {
                     val addresses = Collections.list(networkInterface.inetAddresses)
                     for (address in addresses) {
-                        if (!address.isLoopbackAddress && address is InetAddress && address.hostAddress?.contains(":") == false) {
-                            return address.hostAddress
+                        val hostAddress = address.hostAddress
+                        // 排除 IPv6、回环地址和 NAT 模式的地址 (10.0.2.x)
+                        if (hostAddress != null && 
+                            !hostAddress.contains(":") && 
+                            !address.isLoopbackAddress &&
+                            !hostAddress.startsWith("10.0.2.") &&  // 排除 NAT 模式 IP
+                            !hostAddress.startsWith("127.")) {
+                            return hostAddress
                         }
                     }
                 }
             }
+            // 如果找不到桥接模式的 IP，尝试获取主机的 IP（用于 NAT 模式下的回退）
+            // 在 NAT 模式下，模拟器可以通过 10.0.2.2 访问主机
+            return "10.0.2.2"  // NAT 模式下访问主机的特殊地址
         } catch (ex: Exception) {
             ex.printStackTrace()
         }
@@ -128,7 +186,7 @@ class SettingsActivity : FragmentActivity() {
     }
 }
 
-class SimpleHttpServer(private val port: Int) {
+class SimpleHttpServer(private val port: Int, private val context: Context) {
     private var serverSocket: ServerSocket? = null
     private var isRunning = false
     private val executor = Executors.newCachedThreadPool()
@@ -188,11 +246,25 @@ class SimpleHttpServer(private val port: Int) {
             val method = parts[0]
             val uri = parts[1]
             
+            // Read headers to find Content-Length for POST requests
+            var contentLength = 0
+            var line: String?
+            while (input.readLine().also { line = it } != null && line!!.isNotEmpty()) {
+                if (line!!.startsWith("Content-Length:", ignoreCase = true)) {
+                    contentLength = line!!.substringAfter(":").trim().toIntOrNull() ?: 0
+                }
+            }
+            
             // Process the request based on URI and method
             when {
                 uri == "/" && method == "GET" -> {
                     val html = serveMainPage()
                     sendResponse(output, html, "text/html", 200)
+                }
+                uri == "/api/config" && method == "POST" -> {
+                    // Read request body based on Content-Length
+                    val requestBody = readRequestBody(input, contentLength)
+                    handleConfigUpdate(requestBody, output)
                 }
                 else -> {
                     sendResponse(output, "Not Found", "text/plain", 404)
@@ -210,6 +282,15 @@ class SimpleHttpServer(private val port: Int) {
     }
 
     private fun serveMainPage(): String {
+        // Load saved values
+        val prefs = context.getSharedPreferences("TVAppPrefs", Context.MODE_PRIVATE)
+        val savedM3uUrl = prefs.getString("m3u_url", "") ?: ""
+        val savedAutoStart = prefs.getBoolean("auto_start", false)
+        val savedLanguage = prefs.getString("selected_language", "") ?: ""
+        
+        // Escape HTML special characters
+        val escapedM3uUrl = savedM3uUrl.replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+        
         return """
             <!DOCTYPE html>
             <html>
@@ -236,12 +317,12 @@ class SimpleHttpServer(private val port: Int) {
                     <form id="configForm">
                         <div class="form-group">
                             <label for="m3uUrl">直播源 (M3U链接):</label>
-                            <input type="url" id="m3uUrl" name="m3uUrl" placeholder="请输入M3U播放列表链接">
+                            <input type="url" id="m3uUrl" name="m3uUrl" placeholder="请输入M3U播放列表链接" value="$escapedM3uUrl">
                         </div>
                         
                         <div class="form-group">
                             <label>
-                                <input type="checkbox" id="autoStart" name="autoStart">
+                                <input type="checkbox" id="autoStart" name="autoStart" ${if (savedAutoStart) "checked" else ""}>
                                 开机自动启动
                             </label>
                         </div>
@@ -249,11 +330,11 @@ class SimpleHttpServer(private val port: Int) {
                         <div class="form-group">
                             <label for="language">语言设置:</label>
                             <select id="language" name="language">
-                                <option value="">跟随系统</option>
-                                <option value="zh-CN">中文（简体）</option>
-                                <option value="zh-HK">繁体中文（香港）</option>
-                                <option value="zh-TW">繁体中文（台湾）</option>
-                                <option value="en">英文</option>
+                                <option value="" ${if (savedLanguage.isEmpty()) "selected" else ""}>跟随系统</option>
+                                <option value="zh-CN" ${if (savedLanguage == "zh-CN") "selected" else ""}>中文（简体）</option>
+                                <option value="zh-HK" ${if (savedLanguage == "zh-HK") "selected" else ""}>繁体中文（香港）</option>
+                                <option value="zh-TW" ${if (savedLanguage == "zh-TW") "selected" else ""}>繁体中文（台湾）</option>
+                                <option value="en" ${if (savedLanguage == "en") "selected" else ""}>英文</option>
                             </select>
                         </div>
                         
@@ -305,6 +386,63 @@ class SimpleHttpServer(private val port: Int) {
         """.trimIndent()
     }
 
+    private fun readRequestBody(input: BufferedReader, contentLength: Int): String {
+        if (contentLength <= 0) return ""
+        val buffer = CharArray(contentLength)
+        var totalRead = 0
+        while (totalRead < contentLength) {
+            val read = input.read(buffer, totalRead, contentLength - totalRead)
+            if (read == -1) break
+            totalRead += read
+        }
+        return String(buffer, 0, totalRead)
+    }
+    
+    private fun handleConfigUpdate(requestBody: String, output: PrintWriter) {
+        try {
+            val json = JSONObject(requestBody)
+            val m3uUrl = json.optString("m3uUrl", "")
+            val autoStart = json.optBoolean("autoStart", false)
+            val language = json.optString("language", "")
+            
+            // Save to SharedPreferences
+            val prefs = context.getSharedPreferences("TVAppPrefs", Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                if (m3uUrl.isNotEmpty()) {
+                    putString("m3u_url", m3uUrl)
+                }
+                putBoolean("auto_start", autoStart)
+                if (language.isNotEmpty()) {
+                    putString("selected_language", language)
+                    // Also update language using LanguageHelper
+                    LanguageHelper.saveSelectedLanguage(context, language)
+                }
+                apply()
+            }
+            
+            // Send success response
+            val response = JSONObject().apply {
+                put("success", true)
+                put("message", "设置已保存")
+            }
+            sendResponse(output, response.toString(), "application/json", 200)
+            
+            // Notify SettingsActivity to refresh display
+            if (context is SettingsActivity) {
+                context.runOnUiThread {
+                    context.refreshM3uUrlDisplay()
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            val errorResponse = JSONObject().apply {
+                put("success", false)
+                put("message", "保存失败: ${e.message}")
+            }
+            sendResponse(output, errorResponse.toString(), "application/json", 500)
+        }
+    }
+    
     private fun sendResponse(output: PrintWriter, content: String, contentType: String, statusCode: Int) {
         output.print("HTTP/1.1 $statusCode OK\r\n")
         output.print("Content-Type: $contentType\r\n")

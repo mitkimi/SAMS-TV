@@ -18,6 +18,41 @@ if (-not (Test-Path $emulatorExe)) {
     exit
 }
 
+# Check for ADB
+$adbExe = "$sdkPath\platform-tools\adb.exe"
+$hasAdb = Test-Path $adbExe
+
+# Detect running emulators
+$runningEmulators = @{}
+if ($hasAdb) {
+    Write-Host "Checking for running emulators..." -ForegroundColor Cyan
+    try {
+        $adbDevices = & $adbExe devices 2>&1
+        $deviceLines = $adbDevices | Where-Object { $_ -match "emulator-\d+" }
+        if ($deviceLines.Count -gt 0) {
+            Write-Host "Found $($deviceLines.Count) running emulator(s):" -ForegroundColor Green
+            foreach ($line in $deviceLines) {
+                if ($line -match "(emulator-\d+)") {
+                    $serial = $matches[1]
+                    # Try to get AVD name from emulator
+                    try {
+                        $avdName = & $adbExe -s $serial shell getprop ro.kernel.qemu.avd_name 2>&1
+                        if ($avdName -and -not ($avdName -match "error|not found")) {
+                            $runningEmulators[$serial] = $avdName.Trim()
+                            Write-Host "  - $serial -> $($avdName.Trim())" -ForegroundColor White
+                        }
+                    } catch {
+                        # Ignore errors
+                    }
+                }
+            }
+            Write-Host ""
+        }
+    } catch {
+        Write-Host "Could not check running emulators: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 # List available AVDs
 Write-Host "Finding all AVDs..." -ForegroundColor Cyan
 $avds = & $emulatorExe -list-avds
@@ -30,7 +65,11 @@ if ($avds.Count -eq 0) {
 
 Write-Host "Found $($avds.Count) AVD(s):" -ForegroundColor Green
 foreach ($avd in $avds) {
-    Write-Host "  - $avd" -ForegroundColor White
+    $status = ""
+    if ($runningEmulators.Values -contains $avd) {
+        $status = " [RUNNING]"
+    }
+    Write-Host "  - $avd$status" -ForegroundColor White
 }
 Write-Host ""
 
@@ -176,8 +215,90 @@ if ($failCount -gt 0) {
     Write-Host "  Failed: $failCount AVD(s)" -ForegroundColor Red
 }
 Write-Host ""
+
+# Handle running emulators
+if ($runningEmulators.Count -gt 0) {
+    Write-Host "Running Emulators Detected:" -ForegroundColor Cyan
+    $runningAvds = $runningEmulators.Values | Select-Object -Unique
+    foreach ($runningAvd in $runningAvds) {
+        Write-Host "  - $runningAvd" -ForegroundColor Yellow
+    }
+    Write-Host ""
+    
+    $restartChoice = Read-Host "Restart running emulators to apply bridged network mode? (Y/N)"
+    
+    if ($restartChoice -eq "Y" -or $restartChoice -eq "y") {
+        Write-Host ""
+        Write-Host "Closing emulators to restart with bridged network mode..." -ForegroundColor Cyan
+        
+        foreach ($kvp in $runningEmulators.GetEnumerator()) {
+            $serial = $kvp.Key
+            $avdName = $kvp.Value
+            
+            Write-Host "Closing: $avdName ($serial)..." -ForegroundColor Yellow
+            
+            # Method 1: Try to close via emulator console (graceful shutdown)
+            $closed = $false
+            if ($serial -match "emulator-(\d+)") {
+                $port = $matches[1]
+                try {
+                    $tcpClient = New-Object System.Net.Sockets.TcpClient
+                    $tcpClient.ReceiveTimeout = 1000
+                    $tcpClient.Connect("127.0.0.1", $port)
+                    $stream = $tcpClient.GetStream()
+                    $writer = New-Object System.IO.StreamWriter($stream)
+                    
+                    # Send kill command to gracefully shutdown
+                    $writer.WriteLine("kill")
+                    $writer.Flush()
+                    Start-Sleep -Milliseconds 300
+                    
+                    $writer.Close()
+                    $tcpClient.Close()
+                    $closed = $true
+                    Write-Host "  Closed gracefully" -ForegroundColor Green
+                } catch {
+                    # Console method failed, will try ADB
+                }
+            }
+            
+            # Method 2: Use ADB to close emulator
+            if (-not $closed -and $hasAdb) {
+                try {
+                    & $adbExe -s $serial emu kill 2>&1 | Out-Null
+                    Start-Sleep -Seconds 2
+                    Write-Host "  Closed via ADB" -ForegroundColor Green
+                    $closed = $true
+                } catch {
+                    Write-Host "  Could not close automatically" -ForegroundColor Yellow
+                }
+            }
+            
+            if ($closed) {
+                # Wait a moment, then restart with new config
+                Start-Sleep -Seconds 2
+                Write-Host "  Restarting with bridged network mode..." -ForegroundColor Cyan
+                Start-Process -FilePath $emulatorExe -ArgumentList "-avd", $avdName -WindowStyle Minimized
+                Write-Host "  Restart command sent" -ForegroundColor Green
+            } else {
+                Write-Host "  Please close and restart manually" -ForegroundColor Yellow
+            }
+        }
+        
+        Write-Host ""
+        Write-Host "Emulators are restarting with bridged network mode configuration." -ForegroundColor Green
+        Write-Host "Please wait for them to fully boot before using." -ForegroundColor Yellow
+    } else {
+        Write-Host ""
+        Write-Host "Please restart running emulators manually to apply bridged network mode." -ForegroundColor Yellow
+        Write-Host "The configuration has been saved and will be used on next startup." -ForegroundColor Green
+    }
+} else {
+    Write-Host "No running emulators detected." -ForegroundColor Gray
+}
+
+Write-Host ""
 Write-Host "All configured AVDs will use bridged network mode permanently." -ForegroundColor Green
-Write-Host "Restart any running emulators for changes to take effect." -ForegroundColor Yellow
 Write-Host ""
 
 pause
