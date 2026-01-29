@@ -5,17 +5,16 @@ plugins {
 
 android {
     namespace = "com.example.myapplication"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.myapplication"
-        minSdk = 23
-        targetSdk = 36
+        minSdk = 21
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -28,16 +27,41 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "1.8"
+    }
+    buildFeatures {
+        viewBinding = true
     }
 }
 
 dependencies {
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.leanback)
-    implementation(libs.glide)
+    
+    // QR Code generation
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    
+
+    
+    // Preferences
+    implementation("androidx.preference:preference-ktx:1.2.1")
+    
+    // JSON parsing
+    implementation("com.google.code.gson:gson:2.10.1")
+    
+    // ExoPlayer for video playback
+    val exoPlayerVersion = "2.19.1"
+    implementation("com.google.android.exoplayer:exoplayer-core:$exoPlayerVersion")
+    implementation("com.google.android.exoplayer:exoplayer-ui:$exoPlayerVersion")
+    implementation("com.google.android.exoplayer:exoplayer-hls:$exoPlayerVersion")
+    
+    // Kotlin Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 }

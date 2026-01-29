@@ -1,4 +1,9 @@
 <resources>
 
     <style name="Theme.MyApplication" parent="@style/Theme.Leanback" />
+    
+    <style name="Theme.MyApplication.NoActionBar" parent="@style/Theme.Leanback">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
 </resources>
