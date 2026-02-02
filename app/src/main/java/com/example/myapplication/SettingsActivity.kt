@@ -44,13 +44,12 @@ class SettingsActivity : FragmentActivity() {
         }
     }
     
+    // 临时硬编码，调试用
+    private val DEBUG_M3U_URL = "https://epg.pw/test_channels_macau.m3u"
+
     private fun setDefaultM3uUrl() {
         val prefs = getSharedPreferences("TVAppPrefs", Context.MODE_PRIVATE)
-        val currentM3uUrl = prefs.getString("m3u_url", "")
-        if (currentM3uUrl.isNullOrEmpty()) {
-            val defaultUrl = "http://offontime-prod.oss-cn-beijing.aliyuncs.com/cms/2026/01/28/02fada57-7f19-42ce-8c0a-c24854f68044.m3u8"
-            prefs.edit().putString("m3u_url", defaultUrl).apply()
-        }
+        prefs.edit().putString("m3u_url", DEBUG_M3U_URL).apply()
     }
 
     private fun initViews() {
